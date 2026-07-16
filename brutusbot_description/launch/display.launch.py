@@ -6,8 +6,8 @@ import xacro
 
 
 def generate_launch_description():
-    package_dir = get_package_share_directory("brutusbot_description")
-    urdf_file = os.path.join(package_dir, "urdf", "brutusbot.xacro")
+    description_pkg_dir = get_package_share_directory("brutusbot_description")
+    urdf_file = os.path.join(description_pkg_dir, "urdf", "brutusbot.xacro")
     robot_description = xacro.process_file(urdf_file).toxml()
 
     robot_state_publisher_node = Node(
@@ -29,7 +29,7 @@ def generate_launch_description():
         package="rviz2",
         executable="rviz2",
         name="rviz2",
-        arguments=["-d", os.path.join(package_dir, "rviz", "display.rviz")],
+        arguments=["-d", os.path.join(description_pkg_dir, "rviz", "display.rviz")],
         output="screen",
     )
 
