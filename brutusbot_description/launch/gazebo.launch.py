@@ -1,11 +1,12 @@
+import os
+from pathlib import Path
+
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
-import os
-from pathlib import Path
 import xacro
 
 
@@ -14,13 +15,13 @@ def generate_launch_description():
     urdf_file = os.path.join(description_pkg_dir, "urdf", "brutusbot.xacro")
     robot_description = xacro.process_file(urdf_file).toxml()
 
-    use_sim_time = LaunchConfiguration("use_sim_time")
-
-    declare_use_sim_time = DeclareLaunchArgument(
+    use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
         default_value="true",
         description="Use simulation time",
     )
+
+    use_sim_time = LaunchConfiguration("use_sim_time")
 
     gazebo_resource_path = SetEnvironmentVariable(
         name="GZ_SIM_RESOURCE_PATH",
@@ -66,7 +67,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        declare_use_sim_time,
+        use_sim_time_arg,
         gazebo_resource_path,
         robot_state_publisher_node,
         gazebo,

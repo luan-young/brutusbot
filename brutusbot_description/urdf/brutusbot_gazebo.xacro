@@ -30,4 +30,10 @@
         <maxVel>1.0</maxVel>
     </gazebo>
 
+    <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+            <parameters>$(find brutusbot_controller)/config/brutusbot_controllers.yaml</parameters>
+        </plugin>
+    </gazebo>
+
 </robot>
