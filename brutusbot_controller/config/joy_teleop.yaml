@@ -4,13 +4,15 @@ joy_teleop:
       type: topic
       interface_type: geometry_msgs/msg/TwistStamped
       topic_name: brutusbot_controller/cmd_vel
-      deadman_buttons: [10]
+      deadman_buttons: [5] # for joy_node
+      # deadman_buttons: [10] # for game_controller_node
       axis_mappings:
         twist-linear-x:
           axis: 1
-          scale: 1.0
+          scale: 0.5
           offset: 0.0
         twist-angular-z:
-          axis: 2
-          scale: 8.0
+          axis: 3 # for joy_node
+          # axis: 2 # for game_controller_node
+          scale: 0.53
           offset: 0.0

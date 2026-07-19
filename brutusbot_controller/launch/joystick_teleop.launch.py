@@ -16,7 +16,8 @@ def generate_launch_description():
 
     joy_node = Node(
         package="joy",
-        executable="game_controller_node",
+        executable="joy_node",
+        # executable="game_controller_node",
         name="joystick",
         parameters=[
             os.path.join(get_package_share_directory("brutusbot_controller"), "config", "joy_config.yaml"),

@@ -15,17 +15,16 @@ def generate_launch_description():
         ],
     )
 
-    simple_controller = Node(
+    brutusbot_controller = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=[
-            "simple_velocity_controller",
-            "--controller-manager",
-            "/controller_manager"
-        ]
+        arguments=["brutusbot_controller", 
+                   "--controller-manager", 
+                   "/controller_manager"
+        ],
     )
 
     return LaunchDescription([
         joint_state_broadcaster,
-        simple_controller,
+        brutusbot_controller,
     ])
