@@ -40,7 +40,7 @@
     <joint name="base_joint" type="fixed">
         <parent link="base_footprint"/>
         <child link="base_link" />
-        <origin xyz="0 0 ${wheel_radius + motor_height / 2.0}" rpy="0 0 0"/>
+        <origin xyz="${-motor_position} 0 ${wheel_radius + motor_height / 2.0}" rpy="0 0 0"/>
     </joint>
 
     <xacro:macro name="motor_link" params="prefix">
