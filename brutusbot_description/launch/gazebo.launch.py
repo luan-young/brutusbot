@@ -66,6 +66,14 @@ def generate_launch_description():
         ]
     )
 
+    rviz2_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        arguments=["-d", os.path.join(description_pkg_dir, "rviz", "display.rviz")],
+        output="screen",
+    )
+
     return LaunchDescription([
         use_sim_time_arg,
         gazebo_resource_path,
@@ -73,4 +81,5 @@ def generate_launch_description():
         gazebo,
         gz_spawn_entity_node,
         gz_ros2_bridge,
+        rviz2_node
     ])
