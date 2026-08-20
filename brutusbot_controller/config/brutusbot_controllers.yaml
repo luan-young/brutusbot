@@ -48,20 +48,22 @@ brutusbot_controller:
 
     # Velocity and acceleration limits
     # Whenever a min_* is unspecified, default to -max_*
+    # Total velocity for each motor is limited to 1 m/s, which must be split to linear and angular velocity according to the wheel separation
+    # We chose 75% for linear and 25% for angular velocity
     linear:
       x:
         has_velocity_limits    : true
-        max_velocity           : 0.5  # m/s
-        min_velocity           : -0.5 # m/s
+        max_velocity           : 0.75  # m/s
+        min_velocity           : -0.75 # m/s
         has_acceleration_limits: true
-        max_acceleration       : 0.5  # m/s^2
-        has_jerk_limits        : true
-        max_jerk               : 2.0  # m/s^3
+        max_acceleration       : 1.5  # m/s^2
+        has_jerk_limits        : false
+        max_jerk               : 15.0  # m/s^3
     angular:
       z:
         has_velocity_limits    : true
-        max_velocity           : 0.53  # rad/s = max_velocity / (2*pi*(wheel_separation / 2))
+        max_velocity           : 1.85  # rad/s = max_velocity / (wheel_separation / 2)
         has_acceleration_limits: true
-        max_acceleration       : 0.5  # rad/s^2
-        has_jerk_limits        : true
-        max_jerk               : 2.0  # rad/s^3
+        max_acceleration       : 3.70  # rad/s^2
+        has_jerk_limits        : false
+        max_jerk               : 37.0  # rad/s^3
