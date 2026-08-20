@@ -1,0 +1,7 @@
+<library path="brutusbot_interface">
+  <class name="brutusbot_firmware/BrutusbotInterface"
+         type="brutusbot_firmware::BrutusbotInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>Hardware interface for Brutusbot motors.</description>
+  </class>
+</library>
