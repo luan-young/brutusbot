@@ -4,7 +4,13 @@
     <ros2_control name="RobotSystem" type="system">
 
         <hardware>
-            <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+            <xacro:if value="$(arg is_sim)">
+                <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+            </xacro:if>
+            <xacro:unless value="$(arg is_sim)">
+                <plugin>brutusbot_firmware/BrutusbotInterface</plugin>
+                <param name="serial_port">/dev/ttyUSB0</param>
+            </xacro:unless>
         </hardware>
 
         <joint name="left_motor_wheel_joint">

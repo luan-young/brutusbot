@@ -1,9 +1,13 @@
 <?xml version="1.0"?>
 <robot name="brutusbot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+    <xacro:arg name="is_sim" default="true"/>
+
     <xacro:include filename="common_properties.xacro"/>
     <xacro:include filename="mobile_base.xacro"/>
-    <xacro:include filename="brutusbot_gazebo.xacro"/>
+    <xacro:if value="$(arg is_sim)">
+        <xacro:include filename="brutusbot_gazebo.xacro"/>
+    </xacro:if>
     <xacro:include filename="brutusbot_ros2_control.xacro"/>
 
 </robot>
