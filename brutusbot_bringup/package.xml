@@ -9,6 +9,10 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>brutusbot_description</exec_depend>
+  <exec_depend>brutusbot_controller</exec_depend>
+  <exec_depend>brutusbot_firmware</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
