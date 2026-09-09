@@ -1,5 +1,8 @@
 # Brutusbot
 
+<img src="images/20260909_144352_1_reduced.gif" alt="Robot demo gif" width="300">
+<img src="images/20260909_145032_reduced.gif" alt="Robot demo gif" width="300">
+
 Brutusbot is a hands-on ROS 2 differential-drive robot project that connects
 robot modelling, simulation, low-level control, and physical hardware in one
 small mobile platform. A Raspberry Pi 5 runs ROS 2 and the `ros2_control`
