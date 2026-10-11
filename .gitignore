@@ -52,3 +52,6 @@ CATKIN_IGNORE
 
 # vscode
 .vscode/
+
+# Local secrets (Pi 5 SSH credentials, etc.)
+.secrets/

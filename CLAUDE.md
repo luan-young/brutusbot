@@ -32,6 +32,17 @@ C++ formatting: `.clang-format` (Google style, 4-space indent, `AccessModifierOf
 
 `brutusbot_firmware/build/` is a stray local CMake build dir (has `AMENT_IGNORE`, gitignored) — ignore it.
 
+## Raspberry Pi 5 access
+
+SSH credentials for the robot's Pi 5 live in `.secrets/pi5.env` (gitignored, `chmod 600`; never commit it or echo the password into output). It defines `PI5_HOST`, `PI5_USER`, `PI5_PASSWORD`. To run a command on the Pi:
+
+```bash
+source .secrets/pi5.env
+sshpass -p "$PI5_PASSWORD" ssh -o StrictHostKeyChecking=accept-new "$PI5_USER@$PI5_HOST" '<command>'
+```
+
+`sshpass` must be installed (`sudo apt install sshpass`); if an SSH key is set up for the Pi, plain `ssh "$PI5_USER@$PI5_HOST"` works and the password isn't needed.
+
 ## Architecture
 
 Package dependency flow: `brutusbot_bringup` → (`brutusbot_description`, `brutusbot_controller`, `brutusbot_firmware`).
@@ -47,4 +58,4 @@ Package dependency flow: `brutusbot_bringup` → (`brutusbot_description`, `brut
   - Serial protocol (`serial_protocol.{hpp,cpp}`): frame = `0x7E` start, payload size, size checksum, payload (message code + data), additive checksum over size+payload; max payload 32 bytes; byte-by-byte state-machine parser. Codes: `0x10` set wheel velocity (2 floats), `0x11` request state, `0x20` velocity ack, `0x21` state reply (left pos/vel, right pos/vel as floats).
   - `arduino/brutusbot_control/`: the Arduino sketch (AccelStepper) with its own copy of the protocol in `serial_protocol.h`. **Any protocol change must be mirrored in both the ROS side and the Arduino header** (and the tables in `arduino/README.md`).
 - **brutusbot_bringup** — top-level launch files composing the above. Sim passes `use_sim_time=True`; real robot passes `False`. Note `brutusbot_controllers.yaml` sets `use_sim_time: true` and is reused by the real-robot launch, which overrides it with `use_sim_time: False`.
-- **brutusbot_slam** — new, empty package scaffold (current `visual-slam` branch work).
+- **brutusbot_slam** — monocular visual SLAM work in progress on the `visual-slam` branch. The phased plan, status and decision log are in `brutusbot_slam/PLAN.md`. Read it before working on SLAM or Nav2, and update its status table and decision log as phases finish or decisions change.

@@ -1,0 +1,159 @@
+diff -ru a/3rdparty/fbow/fbow/cpu.h b/3rdparty/fbow/fbow/cpu.h
+--- a/3rdparty/fbow/fbow/cpu.h	2026-10-11 08:16:50.197185307 -0300
++++ b/3rdparty/fbow/fbow/cpu.h	2026-10-11 08:16:50.264186366 -0300
+@@ -4,7 +4,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <string>
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || !(defined(__x86_64__) || defined(__i386__))
+ 
+ #else
+ #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+@@ -48,7 +48,7 @@
+     static bool inline detect_OS_AVX512();
+     static inline uint64_t xgetbv(unsigned int x);
+ };
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || !(defined(__x86_64__) || defined(__i386__))
+ 
+ void cpu::cpuid(int32_t out[4], int32_t x){}
+ #else
+@@ -91,7 +91,7 @@
+ ////////////////////////////////////////////////////////////////////////////////
+ bool cpu::detect_OS_AVX(){
+     //  Copied from: http://stackoverflow.com/a/22521619/922184
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ 
+     bool avxSupported = false;
+     int cpuInfo[4]; cpuid(cpuInfo, 1);
+@@ -105,7 +105,7 @@
+ }
+ bool cpu::detect_OS_AVX512(){
+ 
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+     if (!detect_OS_AVX())
+         return false;
+     uint64_t xcrFeatureMask = xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+@@ -118,7 +118,7 @@
+ std::string cpu::get_vendor_string(){ int32_t CPUInfo[4]; char name[13];cpuid(CPUInfo, 0); memcpy(name + 0, &CPUInfo[1], 4);memcpy(name + 4, &CPUInfo[3], 4); memcpy(name + 8, &CPUInfo[2], 4); name[12] = '\0'; return name;}
+ void cpu::detect_host(){
+ 
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ 
+     OS_x64 = detect_OS_x64();
+     OS_AVX = detect_OS_AVX();
+diff -ru a/3rdparty/fbow/fbow/fbow.h b/3rdparty/fbow/fbow/fbow.h
+--- a/3rdparty/fbow/fbow/fbow.h	2026-10-11 08:16:50.182185070 -0300
++++ b/3rdparty/fbow/fbow/fbow.h	2026-10-11 08:16:50.264186366 -0300
+@@ -6,7 +6,7 @@
+ #include <map>
+ #include <memory>
+ #include <bitset>
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ #include <immintrin.h>
+ #endif
+ #include "cpu.h"
+@@ -241,7 +241,7 @@
+             return d;
+         }
+     };
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || !(defined(__x86_64__) || defined(__i386__))
+     //fake elements to allow compilation
+     struct L2_avx_generic:public Lx<uint64_t,float,32>{inline float computeDist(uint64_t *ptr){return std::numeric_limits<float>::max();}};
+     struct L2_se3_generic:public Lx<uint64_t,float,32>{inline float computeDist(uint64_t *ptr){return std::numeric_limits<float>::max();}};
+diff -ru a/3rdparty/xflann/xflann/cpu.h b/3rdparty/xflann/xflann/cpu.h
+--- a/3rdparty/xflann/xflann/cpu.h	2026-10-11 08:16:50.214185576 -0300
++++ b/3rdparty/xflann/xflann/cpu.h	2026-10-11 08:16:50.265186382 -0300
+@@ -4,7 +4,7 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <string>
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || !(defined(__x86_64__) || defined(__i386__))
+ 
+ #else
+ #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+@@ -48,7 +48,7 @@
+     static bool inline detect_OS_AVX512();
+     static inline uint64_t xgetbv(unsigned int x);
+ };
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || !(defined(__x86_64__) || defined(__i386__))
+ 
+ void cpu::cpuid(int32_t out[4], int32_t x){}
+ #else
+@@ -91,7 +91,7 @@
+ ////////////////////////////////////////////////////////////////////////////////
+ bool cpu::detect_OS_AVX(){
+     //  Copied from: http://stackoverflow.com/a/22521619/922184
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ 
+     bool avxSupported = false;
+     int cpuInfo[4]; cpuid(cpuInfo, 1);
+@@ -105,7 +105,7 @@
+ }
+ bool cpu::detect_OS_AVX512(){
+ 
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+     if (!detect_OS_AVX())
+         return false;
+     uint64_t xcrFeatureMask = xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+@@ -118,7 +118,7 @@
+ std::string cpu::get_vendor_string(){ int32_t CPUInfo[4]; char name[13];cpuid(CPUInfo, 0); memcpy(name + 0, &CPUInfo[1], 4);memcpy(name + 4, &CPUInfo[3], 4); memcpy(name + 8, &CPUInfo[2], 4); name[12] = '\0'; return name;}
+ void cpu::detect_host(){
+ 
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ 
+     OS_x64 = detect_OS_x64();
+     OS_AVX = detect_OS_AVX();
+diff -ru a/3rdparty/xflann/xflann/impl/distances.h b/3rdparty/xflann/xflann/impl/distances.h
+--- a/3rdparty/xflann/xflann/impl/distances.h	2026-10-11 08:16:50.234185892 -0300
++++ b/3rdparty/xflann/xflann/impl/distances.h	2026-10-11 08:16:50.265186382 -0300
+@@ -33,7 +33,7 @@
+ #include <utility>
+ #include <iostream>
+ #include <stdexcept>
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ #include <immintrin.h>
+ #endif
+ #include <bitset>
+@@ -88,7 +88,7 @@
+     return result;
+ #endif
+ }
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ 
+ inline float d_L2_se3_generic(__m128 *ptr,__m128 *ptr2,int n){
+     __m128 sum=_mm_setzero_ps(), sub_mult;
+@@ -338,7 +338,7 @@
+     inline float computeDist_(float *fptr,float *fptr2,int n){return d_L2_3(fptr,fptr2,n);}
+ };
+ 
+-#ifndef __ANDROID__
++#if !defined(__ANDROID__) && (defined(__x86_64__) || defined(__i386__))
+ struct L2_sse3_generic:public Lx<__m128,float,16>{inline float computeDist_(__m128 *ptr,__m128 *ptr2,int n){return d_L2_se3_generic(ptr,ptr2,n);}};
+ //surf - 256 bytes
+ struct L2_sse3_16w:public Lx<__m128,float,16> {inline float computeDist_(__m128 *ptr,__m128 * ptr2,int n){ return d_L2_sse3_16w(ptr,ptr2,n);}};
+diff -ru a/cmake/compiler.cmake b/cmake/compiler.cmake
+--- a/cmake/compiler.cmake	2026-10-11 08:16:50.253186192 -0300
++++ b/cmake/compiler.cmake	2026-10-11 08:16:50.303186982 -0300
+@@ -17,6 +17,8 @@
+          set(GENERAL_FLAGS "${GENERAL_FLAGS} -mcpu=cortex-a8 -mfpu=neon -mfloat-abi=hard ")
+  elseif(${TARGET_PROCESSOR} MATCHES armv6l) # ARM6
+          set(GENERAL_FLAGS "${GENERAL_FLAGS}  -mabi=aapcs-linux -marm  -march=armv6 -mfloat-abi=hard  -mfp16-format=none -mfpu=vfp -mlittle-endian -mpic-data-is-text-relative -mrestrict-it -msched-prolog -mstructure-size-boundary=0x20 -mtp=auto -mtls-dialect=gnu -munaligned-access -mvectorize-with-neon-quad")
++ elseif(${TARGET_PROCESSOR} MATCHES aarch64) # ARM64, e.g. Raspberry Pi 5 (Cortex-A76)
++         set(GENERAL_FLAGS "-std=c++11 -mcpu=native")
+  else() #x86_64
+ 
+      SET(GENERAL_FLAGS "-std=c++11 -mmmx -msse -msse2 -msse3")
