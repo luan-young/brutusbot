@@ -7,7 +7,7 @@ This is a living document. Run it one phase at a time. When a phase is done, upd
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | 0 | Backend spike (UcoSLAM go/no-go) | Done | **Go for UcoSLAM** (2026-10-11): all 6 criteria pass; 0b fallback not needed |
-| 1 | Camera + markers (sim and real) | Not started | |
+| 1 | Camera + markers (sim and real) | Not started | Detailed plan written 2026-10-12 (1a–1g), incl. extrinsic calibration 1f |
 | 2 | `visual_slam_node` + `SlamBackend` | Not started | |
 | 3 | Map frame, scale, `map → odom` | Not started | |
 | 4 | Mapping mode, occupancy grid, save | Not started | |
@@ -23,6 +23,11 @@ Status values: Not started / In progress / Done / Blocked.
 - 2026-10-03: Try **UcoSLAM + ArUco markers** first for metric scale. ORB-SLAM3 with odometry-based scale is the fallback. Phase 0 decides.
 - 2026-10-10: UcoSLAM passes scale (≤ 1.3% error) and relocalization on the laptop. The go/no-go now depends only on Pi 5 performance.
 - 2026-10-11: **Go for UcoSLAM.** On the Pi 5, with the room lit and the camera moving, localization tracked 100% of frames at 54.7 Hz median (target ≥ 10 Hz). The ORB-SLAM3 fallback (0b) is dropped unless a later phase hits a blocker.
+- 2026-10-12: Phase 1 detailed.
+  - The camera mount pose lives in `brutusbot_description/config/camera_mount.yaml`, relative to `base_footprint`, loaded by xacro. Hand-measured values are only the starting point. They're refined by an extrinsic calibration (1f: checkerboard on the floor + wheel odometry, stop-and-go), because the mount is hand-built.
+  - The sim camera hfov is 0.85 rad to match the C270 (f ≈ 707 px), not ~1.3 rad.
+  - The sim uses its own `worlds/empty.sdf`, because Gazebo's stock one has no sensors system.
+  - Intrinsics are redone with ROS `camera_calibration`, since the Phase 0 distortion terms look over-fitted. `/camera_info` becomes the only intrinsics source.
 
 ## Context
 
@@ -116,15 +121,120 @@ Add `brutusbot_slam/cmake/Find<Backend>.cmake`, driven by a `<BACKEND>_ROOT` cac
 
 ## Phase 1: Camera and markers in sim and on the real robot
 
-- **URDF** `brutusbot_description/urdf/camera.xacro`, included from `brutusbot.xacro`:
-  - `camera_link` at the front of `base_link`, looking forward and pitched ~10° down,
-  - `camera_optical_link` with rpy `-π/2 0 -π/2`,
-  - the mount pose in xacro properties, because TF supplies `T_base_cam`.
-- **Sim**: in `brutusbot_gazebo.xacro`, add a gz `camera` sensor (640×480, 30 Hz, hfov ~1.3 rad). Bridge it to `/image_raw` and `/camera_info` with `ros_gz_bridge` in `gazebo.launch.py`.
-- **World** `brutusbot_description/worlds/textured_room.sdf`: textured walls and floor, a few boxes, and **ArUco marker models** (thin boxes with marker PNG textures at a known size, mounted at camera height). Add a `world` launch arg to `gazebo.launch.py`; the default stays `empty.sdf`.
-- **Real**: `brutusbot_bringup/config/v4l2_camera.yaml` sets `image_size [640,480]`, fixed exposure if possible, `camera_frame_id: camera_optical_link`, and `camera_info_url` pointing to `config/camera_calibration.yaml`. Add the node to `real_robot.launch.py`.
-- **Calibration**: `sudo apt install ros-jazzy-camera-calibration`, then `ros2 run camera_calibration cameracalibrator --size 8x6 --square 0.025 image:=/image_raw`.
-- **Marker layout guide** (README): at least one marker visible from the start pose, then one every ~2–3 m along driven routes and at goal areas, mounted at roughly camera height. Avoid steep viewing angles.
+Goal: the camera exists in the URDF at a **calibrated** pose, publishes `/image_raw` + `/camera_info` in sim and on the real robot, and the sim has a room with ArUco markers. Nothing in this phase depends on UcoSLAM.
+
+Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d → 1e → 1f (real robot), then 1g. 1f is tested in sim before it's used on the real robot.
+
+### 1a. Camera mount in the URDF (nominal pose)
+
+- **Mount values file** `brutusbot_description/config/camera_mount.yaml`. It is the single source of truth for `T_base_footprint_camera_link`, and the 1f calibration tool overwrites it:
+  ```yaml
+  # source: nominal (hand-measured) | calibrated YYYY-MM-DD (rms ..., std ...)
+  parent: base_footprint     # the values below are relative to base_footprint
+  x: 0.0      # m, forward from the wheel axle midpoint
+  y: 0.0      # m, left
+  z: 0.0      # m, lens centre height above the floor
+  roll: 0.0   # rad
+  pitch: 0.0  # rad, positive = looking down
+  yaw: 0.0    # rad, positive = looking left
+  ```
+  Values are relative to `base_footprint` (the floor point below the wheel axle midpoint), not `base_link`, because that's what can be measured on the robot with a tape and what 1f estimates. The URDF box sizes are rough, so the `base_link` offset is a model detail that shouldn't leak into the calibration.
+- **Nominal values (to be filled with the hand measurements)**: x and y of the lens centre from the point on the floor midway between the two wheel contact points; z from the floor to the lens centre; pitch with a phone inclinometer on the camera's top face; roll and yaw ≈ 0. ±2 cm and ±5° is good enough, since 1f refines them.
+- **`urdf/camera.xacro`**, included from `brutusbot.xacro` for both sim and real:
+  - Load the file with `xacro.load_yaml('$(find brutusbot_description)/config/camera_mount.yaml')`.
+  - `camera_joint` (fixed), parent `base_link`, child `camera_link`. Origin = mount values minus the `base_joint` offset (`${-motor_position} 0 ${wheel_radius + motor_height / 2}`). `base_joint` is a pure translation, so the subtraction is exact. Move those two expressions into properties shared with `mobile_base.xacro` so they can't drift apart.
+  - `camera_link` is the body frame: x along the optical axis, z up. It gets a small box visual and collision (C270 body ≈ 0.03 × 0.08 × 0.03 m) and a light inertial so Gazebo keeps the link.
+  - `camera_optical_link` with a fixed joint, rpy `-π/2 0 -π/2` (z forward, x right, y down).
+- `CMakeLists.txt` of `brutusbot_description`: install `config/` (and `worlds/`, `models/` from 1c).
+- **Check**: `display.launch.py` shows the camera at the expected spot. `ros2 run tf2_ros tf2_echo base_footprint camera_optical_link` matches the YAML (translation as given, optical z axis pointing forward and down by `pitch`).
+
+### 1b. Sim camera
+
+- In `brutusbot_gazebo.xacro`, `<gazebo reference="camera_link">` with a gz `camera` sensor:
+  - 640×480, 30 Hz, `R8G8B8`. **hfov = 0.85 rad**, which matches the C270's f ≈ 707 px at 640 px (`2·atan(320/707)`), so the sim and the real images look alike. (The earlier draft said ~1.3 rad, which is far wider than the real camera.)
+  - clip 0.05–20 m, gaussian noise stddev ~0.007, no distortion.
+  - `<topic>image_raw</topic>` (gz publishes `camera_info` next to it), `<gz_frame_id>camera_optical_link</gz_frame_id>`, so the image header carries the optical frame like on the real robot.
+- **Sensors system**: Gazebo's stock `empty.sdf` doesn't load `gz-sim-sensors-system`, so no camera would render. Add our own `worlds/empty.sdf` (stock world + `gz-sim-sensors-system` with `ogre2`) and use it as the default world. Today's behavior is unchanged apart from the camera.
+- **Bridge** in `gazebo.launch.py`: `ros_gz_image image_bridge /image_raw` (lighter than `parameter_bridge` for images) and `/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo` added to the existing `parameter_bridge`.
+- **Ground truth for later phases**: add the `gz-sim-pose-publisher-system` to the robot (model pose only) and bridge it to `/ground_truth/pose`. Phases 3–5 compare `/slam/pose` against it. It costs nothing to add now.
+- **Check**: `ros2 topic hz /image_raw` ≈ 30 Hz with `use_sim_time`, `ros2 run rqt_image_view rqt_image_view` shows the scene, `/camera_info` K has fx ≈ 707.
+
+### 1c. Textured room with ArUco markers
+
+- **Marker models**: script `brutusbot_description/scripts/make_marker_models.py`. It takes the ARUCO_MIP_36h12 PNGs (from `~/dev/ucoslam_data/markers/aruco_mip_36h12_dict.zip`), a list of ids and a size, and writes `models/aruco_<id>/` (`model.config`, `model.sdf` with a 2 mm box, PBR `albedo_map` texture on the front face, white quiet zone around the black border). Run it once and commit the generated models. They're small.
+- **Marker size**: sim uses **0.15 m** (black-border edge). Phase 0 showed that 8.1 cm markers get noisy beyond ~2 m, and the robot sees them from further than the hand-held tests did. The size is a per-setup parameter (Phase 2 `config/ucoslam.yaml`), so sim and real don't have to match.
+- **`worlds/textured_room.sdf`**: ~5 × 4 m room, walls 1 m high.
+  - Walls and floor get **non-repeating** photo textures (e.g. CC0 textures from ambientCG/Poly Haven, committed under `models/room_textures/`). Plain-colour or tiled walls give no ORB features or repeated ones.
+  - 3–4 boxes or furniture shapes for obstacles and parallax.
+  - ~12 markers on walls and boxes, centres at camera height ± 0.1 m, roughly one every 1.5–2 m along the walls, with id 0 visible from the spawn pose (it's Phase 3's `origin_marker_id`).
+  - A **floor checkerboard model** (`models/calib_checkerboard/`, same pattern as the real one from 1f) placed 0.8 m in front of the spawn pose, for testing 1f in sim. It's flat on the floor, so it doesn't get in the way of driving.
+  - Lights: one directional + ambient, no hard shadows over markers.
+- **Ground-truth marker poses** in `worlds/textured_room_markers.yaml` (id, size, pose in the world frame), written by hand next to the SDF. Phase 3's tests compare the map frame against it.
+- `gazebo.launch.py`: add a `world` launch arg (`empty` | `textured_room`, default `empty`), resolved to `brutusbot_description/worlds/<world>.sdf`. `GZ_SIM_RESOURCE_PATH` must also include `brutusbot_description/models`.
+- **Check**: in `textured_room`, every marker is detected by `aruco_test` from `~/dev/aruco-3.1.12` on sim frames saved with `ros2 run image_view image_saver`, at 1 m and 3 m.
+
+### 1d. Real camera node (on the Pi 5)
+
+- `brutusbot_bringup/config/v4l2_camera.yaml`:
+  - `video_device: /dev/video0` (check with `v4l2-ctl --list-devices`; consider a udev symlink `/dev/brutusbot_camera`),
+  - `image_size: [640, 480]`, `pixel_format: YUYV`, `output_encoding: rgb8`, `camera_frame_id: camera_optical_link`, `camera_name: c270`,
+  - `camera_info_url: package://brutusbot_bringup/config/camera_calibration.yaml`,
+  - the fixed controls from `~/dev/ucoslam_data/c270_settings.txt` (manual exposure 150, gain 100, white balance 6000 K, power-line 50 Hz, ...). `v4l2_camera` exposes V4L2 controls as parameters. Confirm the exact parameter names with `ros2 param list /v4l2_camera` on the Pi first, and check that `auto_exposure` is applied before `exposure_time_absolute` (if the order is wrong, set the controls with `v4l2-ctl` in a launch `ExecuteProcess` before the node starts instead).
+- `real_robot.launch.py`: add a `camera` launch arg (default `true`) that starts `v4l2_camera_node` with that file. Add `v4l2_camera` to `brutusbot_bringup/package.xml` and install it on the Pi.
+- **Check (on the Pi)**: `ros2 topic hz /image_raw` ≈ 30 Hz, `ros2 topic echo /camera_info --once` has the calibrated K, `v4l2-ctl -C exposure_time_absolute` shows the fixed value. Don't view raw images over Wi-Fi to judge the frame rate (~27 MB/s); measure on the Pi.
+
+### 1e. Intrinsic calibration
+
+- The Phase 0 calibration (`c270_640x480.yml`, aruco_calibration) has distortion `k2 = 1.07`, `k3 = -3.6`. Values that large, with opposite signs, usually mean an over-fit from too little coverage of the image corners. It still worked for Phase 0, but it should be redone in ROS format.
+- `sudo apt install ros-jazzy-camera-calibration` (laptop; the GUI needs a display). Print a checkerboard on a **rigid** board (A3 if possible), measure the square size with calipers, then, with the camera node running on the Pi:
+  `ros2 run camera_calibration cameracalibrator --size <cols>x<rows> --square <m> --no-service-check image:=/image_raw camera:=/c270`
+  Fill all four bars (X, Y, size, skew), with the board in the image corners and tilted.
+- Target: reprojection error < 0.3 px, |k2|, |k3| well below 1. Save the result as `brutusbot_bringup/config/camera_calibration.yaml` (`camera_name: c270`).
+- **Compare fx/fy with the Phase 0 value (707)**. Phase 0 maps came out ~1% too large. If the new focal length is ~1% lower, that was the cause, and it gets recorded in the decision log. Then delete the old `.yml` from the workflow: from Phase 2 on, the node builds UcoSLAM's camera parameters from `/camera_info`, so this file is the only intrinsics source.
+
+### 1f. Extrinsic calibration: `base_footprint → camera_link`
+
+The mount is hand-built, so the hand measurements from 1a are only a starting point. The extrinsic matters because Phase 3 computes the robot pose as `T_map_base = T_map_slam · T_slam_cam · T_cam_base`:
+- a **yaw** error makes Nav2 see the robot crab sideways (≈ 1.7 cm per metre per degree), and the controller fights it;
+- a **height / pitch / roll** error shifts the occupancy-grid height band of Phase 4 (2° of pitch ≈ 10 cm at 3 m) and the floor projection of Phase 3;
+- an **x / y** error shows up as the pose wobbling during in-place rotations.
+
+**Targets**: z ±1 cm, roll/pitch ±0.5°, yaw ±1°, x/y ±2 cm.
+
+**Method: checkerboard on the floor + wheel odometry, one session, stop-and-go.**
+- A rigid checkerboard (the 1e board is fine) lies flat on the floor ~0.6–1.2 m in front of the robot and **stays put** for the whole session. A chessboard is used instead of ArUco markers because OpenCV 4.6's `cv2.aruco` has no `ARUCO_MIP_36h12`, and corner-based PnP is more accurate anyway.
+- The robot is driven with the joystick through ~20 stationary poses, keeping the board in view: in-place rotations of about ±10°, ±20°, forward/backward steps of 0.2–0.5 m, and a few combinations. At each pose it stops for ~1 s.
+- At each stationary pose, the tool averages a few frames of `T_cam_board` (`findChessboardCornersSB` + `solvePnP`, using `/camera_info`) and reads `T_odom_base_footprint` from TF at the image stamps. "Stationary" is detected automatically (odometry twist ≈ 0 for 0.5 s), so the user only drives. Stop-and-go avoids motion blur and camera/odometry time-sync errors.
+- **Why it works (observability)**:
+  - The board lies on the floor, so every view gives the floor plane in the camera frame → **height, roll, pitch**, independent of where the board was placed.
+  - Rotating in place moves the camera on a circle around the robot's real rotation axis → **x, y** relative to the wheel axle midpoint, which is exactly `base_footprint`.
+  - Driving straight shows the camera which way "forward" is → **yaw**.
+  - Hand measurements alone can't give these to the targets above, and the board position never has to be measured.
+- **Solve**: nonlinear least squares (`scipy.optimize.least_squares`, Huber loss) over the 6-DoF `T_base_cam` plus the board's planar pose in `odom` (x, y, θ; z = board thickness, roll = pitch = 0), minimizing the board corner reprojection error over all poses, with `T_odom_base` from odometry. The 1a nominal values are the initial guess.
+- **Output**:
+  - The estimate, per-axis standard deviation (from the Jacobian), RMS reprojection error, and the difference from the nominal values. It warns if any std is above target or the result is more than 5 cm / 10° from nominal (wrong frame or sign).
+  - **Odometry by-products, report only**: the ratio of camera-measured to odometry-measured rotation (wheel-separation error) and translation (wheel-radius error). Phase 3's scale sanity check depends on odometry, so a known bias here saves debugging later. Changing `brutusbot_controllers.yaml` is a separate decision.
+  - With `--write <path>`, it rewrites `camera_mount.yaml` with the result and the `source: calibrated ...` header. With `--symlink-install` the change applies on the next launch.
+- **Tool**: `brutusbot_slam/scripts/calibrate_camera_extrinsics.py` (rclpy, OpenCV, NumPy, SciPy; installed with `install(PROGRAMS ...)`). It's headless and prints progress on the console, so it can run on the Pi over SSH. It also publishes `/calibration/debug_image` with detected corners. Args: `--board <cols>x<rows> --square <m> [--board-thickness <m>] [--write <path>]`. Needs `real_robot.launch.py` (or sim) running: controllers for the `odom` TF, and the camera.
+- **Procedure**:
+  1. **Sim first**: in `textured_room`, set the URDF mount to known values, start the tool with an initial guess offset by ~3 cm / 5° (a `--init` override), drive the poses. It must recover the URDF values within the targets. This validates the tool and the math before real data.
+  2. **Real robot**: flat, rigid floor (no carpet), board well lit, fixed camera exposure (1d). Run once, write the YAML, then **run a second time** with the new values as the initial guess. The two runs must agree within the targets (repeatability check).
+  3. Commit the YAML and record the result (values, std, odometry ratios) in the decision log.
+- **Recalibrate** whenever the camera is touched or the mount is bent.
+
+### 1g. Marker printing and layout guide (README)
+
+- Print markers from `ARUCO_MIP_36h12` at 15–20 cm, on matte paper (no glare), glued flat to a rigid backing. **Measure the black-border edge with calipers** and use that value; Phase 0's +1% bias may have come from 0.8 mm of size error.
+- Layout: at least one marker visible from the start pose, then one every ~2–3 m along driven routes and at goal areas, centres at roughly camera height (z from 1f). Avoid views steeper than ~60° from the marker normal. Never reuse an id in the same map.
+- Keep a list of the ids used per room.
+
+### Phase 1 done when
+
+1. `display.launch.py` and `simulated_robot.launch.py` show `camera_link` / `camera_optical_link` in the right place, and the default sim behaves as before plus the camera.
+2. Sim: `/image_raw` ≈ 30 Hz, `/camera_info` fx ≈ 707, all `textured_room` markers detectable at 1–3 m, `/ground_truth/pose` published.
+3. Real: `/image_raw` ≈ 30 Hz measured on the Pi with fixed exposure; new intrinsics with < 0.3 px reprojection error, compared against Phase 0.
+4. 1f recovers known extrinsics in sim within the targets; on the real robot, two runs agree within the targets; `camera_mount.yaml` committed with `source: calibrated`.
+5. README has the camera, calibration and marker sections.
 
 ## Phase 2: `visual_slam_node` with a backend abstraction (C++, `brutusbot_slam`)
 
@@ -197,9 +307,9 @@ Files:
 
 ## Files to create / modify
 
-- `brutusbot_slam/`: `CMakeLists.txt`, `package.xml` (rclcpp, sensor_msgs, nav_msgs, geometry_msgs, std_srvs, tf2_ros, tf2_eigen, cv_bridge), `cmake/Find*.cmake`, `third_party/*.patch`, `src/`, `include/`, `config/{ucoslam.yaml,brutusbot_slam.yaml}`, `launch/slam.launch.py`, `maps/.gitkeep`
+- `brutusbot_slam/`: `CMakeLists.txt`, `package.xml` (rclcpp, sensor_msgs, nav_msgs, geometry_msgs, std_srvs, tf2_ros, tf2_eigen, cv_bridge), `cmake/Find*.cmake`, `third_party/*.patch`, `src/`, `include/`, `config/{ucoslam.yaml,brutusbot_slam.yaml}`, `launch/slam.launch.py`, `maps/.gitkeep`, `scripts/calibrate_camera_extrinsics.py`
 - `brutusbot_navigation/` (new): `config/nav2_params.yaml`, `launch/navigation.launch.py`
-- `brutusbot_description/`: `urdf/{camera.xacro,brutusbot.xacro,brutusbot_gazebo.xacro}`, `launch/gazebo.launch.py`, `worlds/textured_room.sdf` + marker models/textures
+- `brutusbot_description/`: `urdf/{camera.xacro,brutusbot.xacro,brutusbot_gazebo.xacro,mobile_base.xacro}`, `config/camera_mount.yaml`, `launch/gazebo.launch.py`, `worlds/{empty,textured_room}.sdf`, `worlds/textured_room_markers.yaml`, `models/{aruco_<id>,calib_checkerboard,room_textures}/`, `scripts/make_marker_models.py`, `CMakeLists.txt`
 - `brutusbot_bringup/`: `launch/{simulated_robot,real_robot}.launch.py`, `config/{v4l2_camera.yaml,camera_calibration.yaml}`, `package.xml`
 - `brutusbot_controller/config/brutusbot_controllers.yaml`: the `odom_frame_id` fix, only if confirmed
 - `CLAUDE.md` / README: new packages, backend build steps, marker printing and layout guide
@@ -207,7 +317,7 @@ Files:
 ## Verification
 
 1. **Phase 0**: the go criteria are measured and written down (fps on the Pi, scale error over 3 m, kidnap relocalization, save/load). Backend decision recorded.
-2. **Phase 1**: `/image_raw` runs at ~30 Hz in sim, the camera TF is correct in RViz, markers are visible in the sim camera, and the real camera is calibrated.
+2. **Phase 1**: see "Phase 1 done when". In short: `/image_raw` ~30 Hz in sim and on the Pi, the camera TF is correct, markers are detectable in the sim camera, intrinsics < 0.3 px, and the extrinsic calibration is validated in sim and repeatable on the real robot.
 3. **Phases 2–3 (sim)**: launch `simulated_robot.launch.py world:=textured_room slam:=mapping` and drive a loop.
    - `/slam/state` reaches `TRACKING`.
    - `/slam/pose` agrees with Gazebo ground truth within ~5 cm and ~2°.
