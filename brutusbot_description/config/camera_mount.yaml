@@ -1,0 +1,11 @@
+# Pose of camera_link relative to base_footprint (the floor point below the wheel axle midpoint).
+# camera_link: x along the optical axis, z up. Loaded by urdf/camera.xacro.
+# The extrinsic calibration (brutusbot_slam PLAN.md, step 1f) rewrites this file.
+#
+# source: nominal (hand-measured 2026-10-12)
+x: 0.07       # m, forward
+y: 0.0        # m, left
+z: 0.21       # m, lens centre height above the floor
+roll: 0.0     # rad
+pitch: 0.0    # rad, positive = looking down
+yaw: 0.0      # rad, positive = looking left

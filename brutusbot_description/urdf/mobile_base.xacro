@@ -16,6 +16,8 @@
     <xacro:property name="caster_wheel_radius" value="${(wheel_radius + motor_height / 2.0) / 2.0}" />
     <xacro:property name="caster_wheel_mass" value="1.0" />
     <xacro:property name="caster_wheel_position" value="${(base_length / 2.0) - caster_wheel_radius - 0.005}" />
+    <xacro:property name="base_joint_x" value="${-motor_position}" />
+    <xacro:property name="base_joint_z" value="${wheel_radius + motor_height / 2.0}" />
 
     <link name="base_footprint"/>
 
@@ -40,7 +42,7 @@
     <joint name="base_joint" type="fixed">
         <parent link="base_footprint"/>
         <child link="base_link" />
-        <origin xyz="${-motor_position} 0 ${wheel_radius + motor_height / 2.0}" rpy="0 0 0"/>
+        <origin xyz="${base_joint_x} 0 ${base_joint_z}" rpy="0 0 0"/>
     </joint>
 
     <xacro:macro name="motor_link" params="prefix">

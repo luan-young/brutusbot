@@ -7,7 +7,7 @@ This is a living document. Run it one phase at a time. When a phase is done, upd
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | 0 | Backend spike (UcoSLAM go/no-go) | Done | **Go for UcoSLAM** (2026-10-11): all 6 criteria pass; 0b fallback not needed |
-| 1 | Camera + markers (sim and real) | Not started | Detailed plan written 2026-10-12 (1a–1g), incl. extrinsic calibration 1f |
+| 1 | Camera + markers (sim and real) | In progress | 1a done (2026-10-12): hand-measured mount x 0.07, z 0.21, level camera. Next: 1b |
 | 2 | `visual_slam_node` + `SlamBackend` | Not started | |
 | 3 | Map frame, scale, `map → odom` | Not started | |
 | 4 | Mapping mode, occupancy grid, save | Not started | |
@@ -28,6 +28,10 @@ Status values: Not started / In progress / Done / Blocked.
   - The sim camera hfov is 0.85 rad to match the C270 (f ≈ 707 px), not ~1.3 rad.
   - The sim uses its own `worlds/empty.sdf`, because Gazebo's stock one has no sensors system.
   - Intrinsics are redone with ROS `camera_calibration`, since the Phase 0 distortion terms look over-fitted. `/camera_info` becomes the only intrinsics source.
+- 2026-10-12: Hand-measured camera mount, relative to `base_footprint`: x 0.07 m, y 0, z 0.21 m, roll/pitch/yaw 0.
+  - The camera is **level**, not pitched ~10° down as first assumed.
+  - With a vertical FOV of ±18.8°, the floor is only visible from ~0.62 m ahead, so a checkerboard lying on the floor is seen at a grazing angle. 1f therefore uses an **upright board** standing on the floor by default; floor mode stays available.
+  - Markers go on walls at roughly 0.2 m centre height, below most furniture tops, so check that furniture doesn't hide them.
 
 ## Context
 
@@ -139,7 +143,7 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
   yaw: 0.0    # rad, positive = looking left
   ```
   Values are relative to `base_footprint` (the floor point below the wheel axle midpoint), not `base_link`, because that's what can be measured on the robot with a tape and what 1f estimates. The URDF box sizes are rough, so the `base_link` offset is a model detail that shouldn't leak into the calibration.
-- **Nominal values (to be filled with the hand measurements)**: x and y of the lens centre from the point on the floor midway between the two wheel contact points; z from the floor to the lens centre; pitch with a phone inclinometer on the camera's top face; roll and yaw ≈ 0. ±2 cm and ±5° is good enough, since 1f refines them.
+- **Nominal values (hand-measured 2026-10-12)**: x 0.07 m, y 0, z 0.21 m, roll/pitch/yaw 0 (level camera). They're measured from the floor point midway between the two wheel contact points to the lens centre; ±2 cm and ±5° is good enough, since 1f refines them.
 - **`urdf/camera.xacro`**, included from `brutusbot.xacro` for both sim and real:
   - Load the file with `xacro.load_yaml('$(find brutusbot_description)/config/camera_mount.yaml')`.
   - `camera_joint` (fixed), parent `base_link`, child `camera_link`. Origin = mount values minus the `base_joint` offset (`${-motor_position} 0 ${wheel_radius + motor_height / 2}`). `base_joint` is a pure translation, so the subtraction is exact. Move those two expressions into properties shared with `mobile_base.xacro` so they can't drift apart.
@@ -167,7 +171,7 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
   - Walls and floor get **non-repeating** photo textures (e.g. CC0 textures from ambientCG/Poly Haven, committed under `models/room_textures/`). Plain-colour or tiled walls give no ORB features or repeated ones.
   - 3–4 boxes or furniture shapes for obstacles and parallax.
   - ~12 markers on walls and boxes, centres at camera height ± 0.1 m, roughly one every 1.5–2 m along the walls, with id 0 visible from the spawn pose (it's Phase 3's `origin_marker_id`).
-  - A **floor checkerboard model** (`models/calib_checkerboard/`, same pattern as the real one from 1f) placed 0.8 m in front of the spawn pose, for testing 1f in sim. It's flat on the floor, so it doesn't get in the way of driving.
+  - A **checkerboard model** (`models/calib_checkerboard/`, same pattern as the real one from 1f) standing upright on the floor ~1 m in front of the spawn pose, for testing 1f in sim. Put it to one side of the driving area, or give it its own small world, so it doesn't block driving.
   - Lights: one directional + ambient, no hard shadows over markers.
 - **Ground-truth marker poses** in `worlds/textured_room_markers.yaml` (id, size, pose in the world frame), written by hand next to the SDF. Phase 3's tests compare the map frame against it.
 - `gazebo.launch.py`: add a `world` launch arg (`empty` | `textured_room`, default `empty`), resolved to `brutusbot_description/worlds/<world>.sdf`. `GZ_SIM_RESOURCE_PATH` must also include `brutusbot_description/models`.
@@ -201,24 +205,27 @@ The mount is hand-built, so the hand measurements from 1a are only a starting po
 
 **Targets**: z ±1 cm, roll/pitch ±0.5°, yaw ±1°, x/y ±2 cm.
 
-**Method: checkerboard on the floor + wheel odometry, one session, stop-and-go.**
-- A rigid checkerboard (the 1e board is fine) lies flat on the floor ~0.6–1.2 m in front of the robot and **stays put** for the whole session. A chessboard is used instead of ArUco markers because OpenCV 4.6's `cv2.aruco` has no `ARUCO_MIP_36h12`, and corner-based PnP is more accurate anyway.
-- The robot is driven with the joystick through ~20 stationary poses, keeping the board in view: in-place rotations of about ±10°, ±20°, forward/backward steps of 0.2–0.5 m, and a few combinations. At each pose it stops for ~1 s.
+**Method: fixed checkerboard + wheel odometry, one session, stop-and-go.**
+- A rigid checkerboard (the 1e board is fine) **stays put** for the whole session. It can be placed two ways (`--board-mode`):
+  - **`upright` (default for this level camera at 0.21 m)**: the board stands vertically on the floor, facing the robot ~0.8–1.5 m away, square to the floor (check with a set square and clamp it to a box or the wall). Measure the height of the bottom corner row above the floor with a ruler (±1 mm) and pass it as `--board-height`.
+  - **`floor`**: the board lies flat on the floor. This only makes sense if the camera is pitched down. With the current mount, the floor is out of view closer than ~0.62 m, and further away the board is seen at a grazing angle.
+- A chessboard is used instead of ArUco markers because OpenCV 4.6's `cv2.aruco` has no `ARUCO_MIP_36h12`, and corner-based PnP is more accurate anyway.
+- The robot is driven with the joystick through ~20 stationary poses, keeping the board in view (hfov ±24°): in-place rotations of about ±8° and ±15°, forward/backward steps of 0.2–0.5 m, and a few combinations. At each pose it stops for ~1 s.
 - At each stationary pose, the tool averages a few frames of `T_cam_board` (`findChessboardCornersSB` + `solvePnP`, using `/camera_info`) and reads `T_odom_base_footprint` from TF at the image stamps. "Stationary" is detected automatically (odometry twist ≈ 0 for 0.5 s), so the user only drives. Stop-and-go avoids motion blur and camera/odometry time-sync errors.
 - **Why it works (observability)**:
-  - The board lies on the floor, so every view gives the floor plane in the camera frame → **height, roll, pitch**, independent of where the board was placed.
+  - The board's orientation relative to the floor is known (vertical, or flat), and in upright mode so is its height. Every view therefore gives the camera's **height, roll and pitch**, whatever the board's position on the floor. In upright mode this relies on the board being truly vertical (1° of lean ≈ 1° of pitch error); in floor mode it relies on the floor being flat.
   - Rotating in place moves the camera on a circle around the robot's real rotation axis → **x, y** relative to the wheel axle midpoint, which is exactly `base_footprint`.
   - Driving straight shows the camera which way "forward" is → **yaw**.
-  - Hand measurements alone can't give these to the targets above, and the board position never has to be measured.
-- **Solve**: nonlinear least squares (`scipy.optimize.least_squares`, Huber loss) over the 6-DoF `T_base_cam` plus the board's planar pose in `odom` (x, y, θ; z = board thickness, roll = pitch = 0), minimizing the board corner reprojection error over all poses, with `T_odom_base` from odometry. The 1a nominal values are the initial guess.
+  - Hand measurements alone can't give these to the targets above, and the board's position on the floor never has to be measured.
+- **Solve**: nonlinear least squares (`scipy.optimize.least_squares`, Huber loss) over the 6-DoF `T_base_cam` plus the board's planar pose in `odom` (x, y, θ). Its height and tilt are fixed by the mode: upright → bottom corner row at `--board-height`, board plane vertical; floor → z = board thickness, flat, minimizing the board corner reprojection error over all poses, with `T_odom_base` from odometry. The 1a nominal values are the initial guess.
 - **Output**:
   - The estimate, per-axis standard deviation (from the Jacobian), RMS reprojection error, and the difference from the nominal values. It warns if any std is above target or the result is more than 5 cm / 10° from nominal (wrong frame or sign).
   - **Odometry by-products, report only**: the ratio of camera-measured to odometry-measured rotation (wheel-separation error) and translation (wheel-radius error). Phase 3's scale sanity check depends on odometry, so a known bias here saves debugging later. Changing `brutusbot_controllers.yaml` is a separate decision.
   - With `--write <path>`, it rewrites `camera_mount.yaml` with the result and the `source: calibrated ...` header. With `--symlink-install` the change applies on the next launch.
-- **Tool**: `brutusbot_slam/scripts/calibrate_camera_extrinsics.py` (rclpy, OpenCV, NumPy, SciPy; installed with `install(PROGRAMS ...)`). It's headless and prints progress on the console, so it can run on the Pi over SSH. It also publishes `/calibration/debug_image` with detected corners. Args: `--board <cols>x<rows> --square <m> [--board-thickness <m>] [--write <path>]`. Needs `real_robot.launch.py` (or sim) running: controllers for the `odom` TF, and the camera.
+- **Tool**: `brutusbot_slam/scripts/calibrate_camera_extrinsics.py` (rclpy, OpenCV, NumPy, SciPy; installed with `install(PROGRAMS ...)`). It's headless and prints progress on the console, so it can run on the Pi over SSH. It also publishes `/calibration/debug_image` with detected corners. Args: `--board <cols>x<rows> --square <m> [--board-mode upright|floor] [--board-height <m>] [--board-thickness <m>] [--write <path>]`. Needs `real_robot.launch.py` (or sim) running: controllers for the `odom` TF, and the camera.
 - **Procedure**:
   1. **Sim first**: in `textured_room`, set the URDF mount to known values, start the tool with an initial guess offset by ~3 cm / 5° (a `--init` override), drive the poses. It must recover the URDF values within the targets. This validates the tool and the math before real data.
-  2. **Real robot**: flat, rigid floor (no carpet), board well lit, fixed camera exposure (1d). Run once, write the YAML, then **run a second time** with the new values as the initial guess. The two runs must agree within the targets (repeatability check).
+  2. **Real robot**: flat, rigid floor (no carpet), board vertical and well lit, fixed camera exposure (1d). Run once, write the YAML, then **run a second time** with the new values as the initial guess. The two runs must agree within the targets (repeatability check).
   3. Commit the YAML and record the result (values, std, odometry ratios) in the decision log.
 - **Recalibrate** whenever the camera is touched or the mount is bent.
 

@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<robot name="brutusbot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- Mount pose relative to base_footprint; see config/camera_mount.yaml -->
+    <xacro:property name="camera_mount"
+        value="${xacro.load_yaml('$(find brutusbot_description)/config/camera_mount.yaml')}" />
+    <xacro:property name="camera_length" value="0.03" />
+    <xacro:property name="camera_width" value="0.08" />
+    <xacro:property name="camera_height" value="0.03" />
+    <xacro:property name="camera_mass" value="0.05" />
+
+    <link name="camera_link">
+        <visual>
+            <geometry>
+                <box size="${camera_length} ${camera_width} ${camera_height}"/>
+            </geometry>
+            <origin xyz="${-camera_length / 2.0} 0 0" rpy="0 0 0"/>
+            <material name="black"/>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="${camera_length} ${camera_width} ${camera_height}"/>
+            </geometry>
+            <origin xyz="${-camera_length / 2.0} 0 0" rpy="0 0 0"/>
+        </collision>
+        <xacro:box_inertia m="${camera_mass}" x="${camera_length}" y="${camera_width}" z="${camera_height}"
+            o_xyz="${-camera_length / 2.0} 0 0" o_rpy="0 0 0"/>
+    </link>
+
+    <!-- base_joint is a pure translation, so subtracting it gives the pose relative to base_link -->
+    <joint name="camera_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="camera_link"/>
+        <origin xyz="${camera_mount['x'] - base_joint_x} ${camera_mount['y']} ${camera_mount['z'] - base_joint_z}"
+            rpy="${camera_mount['roll']} ${camera_mount['pitch']} ${camera_mount['yaw']}"/>
+    </joint>
+
+    <!-- Optical frame: z forward, x right, y down -->
+    <link name="camera_optical_link"/>
+
+    <joint name="camera_optical_joint" type="fixed">
+        <parent link="camera_link"/>
+        <child link="camera_optical_link"/>
+        <origin xyz="0 0 0" rpy="${-pi / 2.0} 0 ${-pi / 2.0}"/>
+    </joint>
+
+</robot>
