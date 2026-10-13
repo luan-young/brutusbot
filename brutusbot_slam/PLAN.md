@@ -174,7 +174,7 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
 - **`worlds/textured_room.sdf`**: ~5 × 4 m room, walls 1 m high.
   - Walls and floor get **non-repeating** photo textures (e.g. CC0 textures from ambientCG/Poly Haven, committed under `models/room_textures/`). Plain-colour or tiled walls give no ORB features or repeated ones.
   - 3–4 boxes or furniture shapes for obstacles and parallax.
-  - ~12 markers on walls and boxes, centres at camera height ± 0.1 m, roughly one every 1.5–2 m along the walls, with id 0 visible from the spawn pose (it's Phase 3's `origin_marker_id`).
+  - Markers on walls and boxes, centres at camera height ± 0.1 m, roughly one every 0.6 m along the walls, with id 0 visible from the spawn pose (it's Phase 3's `origin_marker_id`).
   - A **checkerboard model** (`models/calib_checkerboard/`, same pattern as the real one from 1f) standing upright on the floor ~1 m in front of the spawn pose, for testing 1f in sim. Put it to one side of the driving area, or give it its own small world, so it doesn't block driving.
   - Lights: one directional + ambient, no hard shadows over markers.
 - **Ground-truth marker poses** in `worlds/textured_room_markers.yaml` (id, size, pose in the world frame), written by hand next to the SDF. Phase 3's tests compare the map frame against it.

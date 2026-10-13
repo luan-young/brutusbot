@@ -55,3 +55,6 @@ CATKIN_IGNORE
 
 # Local secrets (Pi 5 SSH credentials, etc.)
 .secrets/
+
+# Personal notes
+RESUME FROM HERE.md
