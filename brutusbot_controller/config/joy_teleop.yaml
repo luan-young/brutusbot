@@ -14,5 +14,5 @@ joy_teleop:
         twist-angular-z:
           axis: 3 # for joy_node
           # axis: 2 # for game_controller_node
-          scale: 1.85
+          scale: 2.17
           offset: 0.0

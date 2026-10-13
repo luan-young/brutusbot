@@ -7,7 +7,7 @@ This is a living document. Run it one phase at a time. When a phase is done, upd
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | 0 | Backend spike (UcoSLAM go/no-go) | Done | **Go for UcoSLAM** (2026-10-11): all 6 criteria pass; 0b fallback not needed |
-| 1 | Camera + markers (sim and real) | In progress | 1a done (2026-10-12): hand-measured mount x 0.07, z 0.21, level camera. Next: 1b |
+| 1 | Camera + markers (sim and real) | In progress | 1a, 1b done (2026-10-12). Sim camera at 30 Hz. Next: 1c |
 | 2 | `visual_slam_node` + `SlamBackend` | Not started | |
 | 3 | Map frame, scale, `map → odom` | Not started | |
 | 4 | Mapping mode, occupancy grid, save | Not started | |
@@ -32,6 +32,9 @@ Status values: Not started / In progress / Done / Blocked.
   - The camera is **level**, not pitched ~10° down as first assumed.
   - With a vertical FOV of ±18.8°, the floor is only visible from ~0.62 m ahead, so a checkerboard lying on the floor is seen at a grazing angle. 1f therefore uses an **upright board** standing on the floor by default; floor mode stays available.
   - Markers go on walls at roughly 0.2 m centre height, below most furniture tops, so check that furniture doesn't hide them.
+- 2026-10-12: 1b done.
+  - The gz sensor publishes `image_raw` and `camera_info` directly (`<camera_info_topic>`), so no remaps are needed and the image_transport subtopics are `/image_raw/*`, as with `v4l2_camera`.
+  - Verified headless: 30.2 Hz, `rgb8`, frame `camera_optical_link`, fx = 707.05, `/ground_truth/pose` published (frame `empty`).
 
 ## Context
 
@@ -162,6 +165,7 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
 - **Bridge** in `gazebo.launch.py`: `ros_gz_image image_bridge /image_raw` (lighter than `parameter_bridge` for images) and `/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo` added to the existing `parameter_bridge`.
 - **Ground truth for later phases**: add the `gz-sim-pose-publisher-system` to the robot (model pose only) and bridge it to `/ground_truth/pose`. Phases 3–5 compare `/slam/pose` against it. It costs nothing to add now.
 - **Check**: `ros2 topic hz /image_raw` ≈ 30 Hz with `use_sim_time`, `ros2 run rqt_image_view rqt_image_view` shows the scene, `/camera_info` K has fx ≈ 707.
+- **Result (2026-10-12)**: the gz sensor uses `<topic>image_raw</topic>` + `<camera_info_topic>camera_info</camera_info_topic>`, so the bridges need no remaps. Headless check: 30.2 Hz, fx 707.05, frame `camera_optical_link`. The horizon is at row ~248, so the camera is level.
 
 ### 1c. Textured room with ArUco markers
 
@@ -303,7 +307,7 @@ Files:
 
 - `config/nav2_params.yaml`:
   - Servers: `bt_navigator`, `planner_server` (Smac 2D or NavFn, `allow_unknown: false`), `controller_server` (Regulated Pure Pursuit), `behavior_server`, `velocity_smoother`, `lifecycle_manager`. **No AMCL.**
-  - Footprint 0.30 × 0.25, offset from `base_footprint` per the URDF.
+  - Footprint: the outer envelope from the URDF, ≈ 0.23 × 0.26 m (x −0.05 … 0.177, y ±0.13 from `base_footprint`): the 0.21 × 0.18 base plus the wheels, which stick out at the sides and past the rear edge.
   - Global costmap: static + inflation. Local costmap: rolling window with static + inflation.
   - Conservative speeds: ~0.3 m/s and ≤ 0.6 rad/s, because fast rotation breaks visual tracking. Limit or remove the `spin` behavior.
   - `enable_stamped_cmd_vel: true`, with `cmd_vel` remapped to `/brutusbot_controller/cmd_vel`.

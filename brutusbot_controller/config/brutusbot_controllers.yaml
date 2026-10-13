@@ -21,7 +21,7 @@ brutusbot_controller:
     pose_covariance_diagonal : [0.001, 0.001, 1.0e-3, 1.0e-3, 1.0e-3, 0.01]
     twist_covariance_diagonal: [0.001, 0.001, 1.0e-3, 1.0e-3, 1.0e-3, 0.01]
 
-    wheel_separation : 0.27
+    wheel_separation : 0.23
     wheel_radius : 0.05
 
     wheel_separation_multiplier: 1.0
@@ -62,8 +62,8 @@ brutusbot_controller:
     angular:
       z:
         has_velocity_limits    : true
-        max_velocity           : 1.85  # rad/s = max_velocity / (wheel_separation / 2)
+        max_velocity           : 2.17  # rad/s = max_velocity / (wheel_separation / 2)
         has_acceleration_limits: true
-        max_acceleration       : 3.70  # rad/s^2
+        max_acceleration       : 4.34  # rad/s^2
         has_jerk_limits        : false
-        max_jerk               : 37.0  # rad/s^3
+        max_jerk               : 43.4  # rad/s^3

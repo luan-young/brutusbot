@@ -45,11 +45,13 @@ def generate_launch_description():
         output="screen",
     )
 
+    world_file = os.path.join(description_pkg_dir, "worlds", "empty.sdf")
+
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory("ros_gz_sim"), "launch", "gz_sim.launch.py")
         ]),
-        launch_arguments={"gz_args": "-r -v 4 empty.sdf"}.items(),
+        launch_arguments={"gz_args": f"-r -v 4 {world_file}"}.items(),
     )
 
     gz_spawn_entity_node = Node(
@@ -67,7 +69,20 @@ def generate_launch_description():
         executable="parameter_bridge",
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
-        ]
+            "/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            "/model/brutusbot/pose@geometry_msgs/msg/PoseStamped[gz.msgs.Pose",
+        ],
+        remappings=[
+            ("/model/brutusbot/pose", "/ground_truth/pose"),
+        ],
+        parameters=[{"use_sim_time": use_sim_time}],
+    )
+
+    gz_image_bridge = Node(
+        package="ros_gz_image",
+        executable="image_bridge",
+        arguments=["/image_raw"],
+        parameters=[{"use_sim_time": use_sim_time}],
     )
 
     rviz2_node = Node(
@@ -85,5 +100,6 @@ def generate_launch_description():
         gazebo,
         gz_spawn_entity_node,
         gz_ros2_bridge,
+        gz_image_bridge,
         rviz2_node
     ])
