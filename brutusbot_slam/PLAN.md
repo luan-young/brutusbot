@@ -7,7 +7,7 @@ This is a living document. Run it one phase at a time. When a phase is done, upd
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | 0 | Backend spike (UcoSLAM go/no-go) | Done | **Go for UcoSLAM** (2026-10-11): all 6 criteria pass; 0b fallback not needed |
-| 1 | Camera + markers (sim and real) | In progress | 1a, 1b, 1c done (2026-10-12). Sim camera at 30 Hz; `textured_room` (34 markers) and `calibration` worlds. Next: 1d |
+| 1 | Camera + markers (sim and real) | In progress | 1a, 1b, 1c done (2026-10-12). 1d config + launch written (2026-10-13); on-robot check pending. |
 | 2 | `visual_slam_node` + `SlamBackend` | Not started | |
 | 3 | Map frame, scale, `map → odom` | Not started | |
 | 4 | Mapping mode, occupancy grid, save | Not started | |
@@ -196,20 +196,21 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
 ### 1d. Real camera node (on the Pi 5)
 
 - `brutusbot_bringup/config/v4l2_camera.yaml`:
-  - `video_device: /dev/video0` (check with `v4l2-ctl --list-devices`; consider a udev symlink `/dev/brutusbot_camera`),
-  - `image_size: [640, 480]`, `pixel_format: YUYV`, `output_encoding: rgb8`, `camera_frame_id: camera_optical_link`, `camera_name: c270`,
-  - `camera_info_url: package://brutusbot_bringup/config/camera_calibration.yaml`,
-  - the fixed controls from `~/dev/ucoslam_data/c270_settings.txt` (manual exposure 150, gain 100, white balance 6000 K, power-line 50 Hz, ...). `v4l2_camera` exposes V4L2 controls as parameters. Confirm the exact parameter names with `ros2 param list /v4l2_camera` on the Pi first, and check that `auto_exposure` is applied before `exposure_time_absolute` (if the order is wrong, set the controls with `v4l2-ctl` in a launch `ExecuteProcess` before the node starts instead).
-- `real_robot.launch.py`: add a `camera` launch arg (default `true`) that starts `v4l2_camera_node` with that file. Add `v4l2_camera` to `brutusbot_bringup/package.xml` and install it on the Pi.
-- **Check (on the Pi)**: `ros2 topic hz /image_raw` ≈ 30 Hz, `ros2 topic echo /camera_info --once` has the calibrated K, `v4l2-ctl -C exposure_time_absolute` shows the fixed value. Don't view raw images over Wi-Fi to judge the frame rate (~27 MB/s); measure on the Pi.
+  - `video_device: /dev/v4l/by-id/usb-046d_C270_HD_WEBCAM_200901010001-video-index0`. That path is stable across reboots and USB ports, so no udev rule is needed.
+  - `image_size: [640, 480]`, `pixel_format: YUYV`, `output_encoding: rgb8`, `camera_frame_id: camera_optical_link`,
+  - `camera_info_url: package://brutusbot_bringup/config/camera_calibration.yaml`. `v4l2_camera` 0.7.3 has no `camera_name` parameter; it names the camera after the device (`c270_hd_webcam`), so the calibration file must use that `camera_name`.
+  - The fixed controls from `~/dev/ucoslam_data/c270_settings.txt`: manual exposure 150, gain 100, white balance 6000 K, power-line 60 Hz, and so on. `v4l2_camera` exposes each V4L2 control as a parameter with the `v4l2-ctl` name (`auto_exposure`, `exposure_time_absolute`, `white_balance_automatic`, …). On startup it sets **every** control from its parameter value (unset ones go to the parameter default, e.g. gain 0), so every control SLAM depends on is pinned in the file. `auto_exposure` is declared before `exposure_time_absolute`, so manual mode is set first.
+- `brutusbot_bringup/config/camera_calibration.yaml`: **interim** copy of the Phase 0 intrinsics in ROS format, so `/camera_info` is valid until 1e replaces it.
+- `real_robot.launch.py`: a `camera` launch arg (default `true`) starts `v4l2_camera_node` with that file. `v4l2_camera` is an exec_depend of `brutusbot_bringup` and is installed on the Pi (`ros-jazzy-v4l2-camera` 0.7.3, 2026-10-13).
+- **Check (on the Pi)**: `ros2 topic hz /image_raw` ≈ 30 Hz, `ros2 topic echo /camera_info --once` has the calibrated K, `v4l2-ctl -C exposure_time_absolute` shows the fixed value. Don't view raw images over Wi-Fi to judge the frame rate (~27 MB/s); measure on the Pi. Also check the node's CPU use: it warns that the YUYV → rgb8 conversion may be slow.
 
 ### 1e. Intrinsic calibration
 
 - The Phase 0 calibration (`c270_640x480.yml`, aruco_calibration) has distortion `k2 = 1.07`, `k3 = -3.6`. Values that large, with opposite signs, usually mean an over-fit from too little coverage of the image corners. It still worked for Phase 0, but it should be redone in ROS format.
 - `sudo apt install ros-jazzy-camera-calibration` (laptop; the GUI needs a display). Print a checkerboard on a **rigid** board (A3 if possible), measure the square size with calipers, then, with the camera node running on the Pi:
-  `ros2 run camera_calibration cameracalibrator --size <cols>x<rows> --square <m> --no-service-check image:=/image_raw camera:=/c270`
+  `ros2 run camera_calibration cameracalibrator --size <cols>x<rows> --square <m> --no-service-check image:=/image_raw camera:=/v4l2_camera`
   Fill all four bars (X, Y, size, skew), with the board in the image corners and tilted.
-- Target: reprojection error < 0.3 px, |k2|, |k3| well below 1. Save the result as `brutusbot_bringup/config/camera_calibration.yaml` (`camera_name: c270`).
+- Target: reprojection error < 0.3 px, |k2|, |k3| well below 1. Save the result as `brutusbot_bringup/config/camera_calibration.yaml` (`camera_name: c270_hd_webcam`), replacing the interim file from 1d.
 - **Compare fx/fy with the Phase 0 value (707)**. Phase 0 maps came out ~1% too large. If the new focal length is ~1% lower, that was the cause, and it gets recorded in the decision log. Then delete the old `.yml` from the workflow: from Phase 2 on, the node builds UcoSLAM's camera parameters from `/camera_info`, so this file is the only intrinsics source.
 
 ### 1f. Extrinsic calibration: `base_footprint → camera_link`

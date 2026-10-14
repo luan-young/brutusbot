@@ -1,0 +1,23 @@
+# INTERIM: Phase 0 calibration (aruco_calibration, ~/dev/ucoslam_data/camera_calibration/01/c270_640x480.yml)
+# converted to ROS camera_info format. Step 1e of brutusbot_slam/PLAN.md replaces it with a new calibration.
+# camera_name must match the name v4l2_camera derives from the device ("C270 HD WEBCAM" -> c270_hd_webcam).
+image_width: 640
+image_height: 480
+camera_name: c270_hd_webcam
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [706.937683, 0.000000, 325.544678, 0.000000, 707.652161, 248.230484, 0.000000, 0.000000, 1.000000]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.000834, 1.069354, -0.001014, -0.000754, -3.615935]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [706.937683, 0.000000, 325.544678, 0.000000, 0.000000, 707.652161, 248.230484, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000]

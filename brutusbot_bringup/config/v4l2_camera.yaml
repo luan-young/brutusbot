@@ -1,0 +1,24 @@
+# v4l2_camera on the robot (Logitech C270). The node sets every V4L2 control from its parameter on startup, so all
+# controls SLAM depends on are fixed here (values from the Phase 0 tests, ~/dev/ucoslam_data/c270_settings.txt).
+v4l2_camera:
+  ros__parameters:
+    video_device: /dev/v4l/by-id/usb-046d_C270_HD_WEBCAM_200901010001-video-index0
+    image_size: [640, 480]
+    pixel_format: YUYV
+    output_encoding: rgb8
+    camera_frame_id: camera_optical_link
+    camera_info_url: package://brutusbot_bringup/config/camera_calibration.yaml
+
+    # Fixed exposure and white balance: auto modes change brightness/colour between frames and hurt tracking.
+    auto_exposure: 1                 # 1 = manual, 3 = aperture priority (auto)
+    exposure_time_absolute: 150      # 100 us units
+    exposure_dynamic_framerate: false
+    gain: 100
+    white_balance_automatic: false
+    white_balance_temperature: 6000
+    power_line_frequency: 2          # 60 Hz
+    sharpness: 24
+    backlight_compensation: 0
+    brightness: 128
+    contrast: 32
+    saturation: 32
