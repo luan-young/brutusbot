@@ -4,7 +4,7 @@ from pathlib import Path
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import xacro
@@ -20,7 +20,14 @@ def generate_launch_description():
         description="Use simulation time",
     )
 
+    world_arg = DeclareLaunchArgument(
+        "world",
+        default_value="empty",
+        description="World in brutusbot_description/worlds: empty, textured_room or calibration",
+    )
+
     use_sim_time = LaunchConfiguration("use_sim_time")
+    world = LaunchConfiguration("world")
 
     robot_description = xacro.process_file(
         urdf_file,
@@ -29,10 +36,11 @@ def generate_launch_description():
 
     gazebo_resource_path = SetEnvironmentVariable(
         name="GZ_SIM_RESOURCE_PATH",
-        value=[
-            str(Path(description_pkg_dir).parent.resolve())
-            ]
-        )
+        value=":".join([
+            str(Path(description_pkg_dir).parent.resolve()),
+            os.path.join(description_pkg_dir, "models"),
+        ]),
+    )
 
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
@@ -45,13 +53,13 @@ def generate_launch_description():
         output="screen",
     )
 
-    world_file = os.path.join(description_pkg_dir, "worlds", "empty.sdf")
+    world_file = PathJoinSubstitution([description_pkg_dir, "worlds", [world, ".sdf"]])
 
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory("ros_gz_sim"), "launch", "gz_sim.launch.py")
         ]),
-        launch_arguments={"gz_args": f"-r -v 4 {world_file}"}.items(),
+        launch_arguments={"gz_args": ["-r -v 4 ", world_file]}.items(),
     )
 
     gz_spawn_entity_node = Node(
@@ -95,6 +103,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         use_sim_time_arg,
+        world_arg,
         gazebo_resource_path,
         robot_state_publisher_node,
         gazebo,

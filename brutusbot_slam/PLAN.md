@@ -7,7 +7,7 @@ This is a living document. Run it one phase at a time. When a phase is done, upd
 | Phase | Description | Status | Notes |
 |---|---|---|---|
 | 0 | Backend spike (UcoSLAM go/no-go) | Done | **Go for UcoSLAM** (2026-10-11): all 6 criteria pass; 0b fallback not needed |
-| 1 | Camera + markers (sim and real) | In progress | 1a, 1b done (2026-10-12). Sim camera at 30 Hz. Next: 1c |
+| 1 | Camera + markers (sim and real) | In progress | 1a, 1b, 1c done (2026-10-12). Sim camera at 30 Hz; `textured_room` (34 markers) and `calibration` worlds. Next: 1d |
 | 2 | `visual_slam_node` + `SlamBackend` | Not started | |
 | 3 | Map frame, scale, `map → odom` | Not started | |
 | 4 | Mapping mode, occupancy grid, save | Not started | |
@@ -35,6 +35,11 @@ Status values: Not started / In progress / Done / Blocked.
 - 2026-10-12: 1b done.
   - The gz sensor publishes `image_raw` and `camera_info` directly (`<camera_info_topic>`), so no remaps are needed and the image_transport subtopics are `/image_raw/*`, as with `v4l2_camera`.
   - Verified headless: 30.2 Hz, `rgb8`, frame `camera_optical_link`, fx = 707.05, `/ground_truth/pose` published (frame `empty`).
+- 2026-10-12: 1c done.
+  - One generator script writes the sim worlds, marker models, textures and ground-truth YAMLs, using procedural textures instead of photos.
+  - The 1f checkerboard has its own `calibration` world.
+  - Sim markers stay at 0.15 m: they're reliable up to 2.5 m, and 20 cm markers didn't detect any better.
+  - Single-marker poses are poor beyond ~2.5 m (rotation errors of 10–25°), so the marker layout should keep a marker within ~2.5 m along driven routes.
 
 ## Context
 
@@ -169,17 +174,24 @@ Work in this order: 1a → 1b → 1c (sim, can run on the laptop alone), then 1d
 
 ### 1c. Textured room with ArUco markers
 
-- **Marker models**: script `brutusbot_description/scripts/make_marker_models.py`. It takes the ARUCO_MIP_36h12 PNGs (from `~/dev/ucoslam_data/markers/aruco_mip_36h12_dict.zip`), a list of ids and a size, and writes `models/aruco_<id>/` (`model.config`, `model.sdf` with a 2 mm box, PBR `albedo_map` texture on the front face, white quiet zone around the black border). Run it once and commit the generated models. They're small.
-- **Marker size**: sim uses **0.15 m** (black-border edge). Phase 0 showed that 8.1 cm markers get noisy beyond ~2 m, and the robot sees them from further than the hand-held tests did. The size is a per-setup parameter (Phase 2 `config/ucoslam.yaml`), so sim and real don't have to match.
-- **`worlds/textured_room.sdf`**: ~5 × 4 m room, walls 1 m high.
-  - Walls and floor get **non-repeating** photo textures (e.g. CC0 textures from ambientCG/Poly Haven, committed under `models/room_textures/`). Plain-colour or tiled walls give no ORB features or repeated ones.
-  - 3–4 boxes or furniture shapes for obstacles and parallax.
-  - Markers on walls and boxes, centres at camera height ± 0.1 m, roughly one every 0.6 m along the walls, with id 0 visible from the spawn pose (it's Phase 3's `origin_marker_id`).
-  - A **checkerboard model** (`models/calib_checkerboard/`, same pattern as the real one from 1f) standing upright on the floor ~1 m in front of the spawn pose, for testing 1f in sim. Put it to one side of the driving area, or give it its own small world, so it doesn't block driving.
-  - Lights: one directional + ambient, no hard shadows over markers.
-- **Ground-truth marker poses** in `worlds/textured_room_markers.yaml` (id, size, pose in the world frame), written by hand next to the SDF. Phase 3's tests compare the map frame against it.
-- `gazebo.launch.py`: add a `world` launch arg (`empty` | `textured_room`, default `empty`), resolved to `brutusbot_description/worlds/<world>.sdf`. `GZ_SIM_RESOURCE_PATH` must also include `brutusbot_description/models`.
-- **Check**: in `textured_room`, every marker is detected by `aruco_test` from `~/dev/aruco-3.1.12` on sim frames saved with `ros2 run image_view image_saver`, at 1 m and 3 m.
+- **One generator**, `brutusbot_description/scripts/generate_sim_worlds.py`, holds the whole layout and writes every file below, so the SDF and the ground truth can't disagree. Textures are seeded, so a rerun gives the same files. Edit the script and rerun it; don't hand-edit the outputs. The generated files are committed (~3.2 MB, most of it the floor texture). Run it with `python3 brutusbot_description/scripts/generate_sim_worlds.py`, which reads the dictionary PNGs from `~/dev/ucoslam_data/markers/aruco_mip_36h12_dict.zip` (`--markers-zip` to override).
+- **Marker models** `models/aruco_<id>/`: a 2 mm box with the dictionary PNG as PBR `albedo_map`, origin at the centre of the printed face, +x = face normal. The PNG has the same one-cell white quiet zone as the printed sheets.
+- **Marker size**: sim uses **0.15 m** (black-border edge; the tile with its quiet zone is 0.1875 m). Phase 0 showed that 8.1 cm markers get noisy beyond ~2 m, and the robot sees them from further than the hand-held tests did. The size is a per-setup parameter (Phase 2 `config/ucoslam.yaml`), so sim and real don't have to match.
+- **`worlds/textured_room.sdf`**: 5 × 4 m room centred on the origin, walls 1 m high; the robot spawns at the origin facing +x.
+  - Walls, floor and boxes get **procedural, non-repeating** textures (`models/room_textures/`): posters, shapes, strokes and text on the walls and boxes, concrete-like stains and speckles on the floor. Photo textures were dropped: they need downloads and license tracking, and the procedural ones give corners at many scales.
+  - 4 boxes (0.35–0.60 m high), each with one marker roughly facing the room centre.
+  - **34 markers**: 30 on the walls, one every 0.6 m, centres alternating at 0.17 / 0.25 m (camera at 0.21 m), plus 4 on the boxes at 0.21 m. Id 0 is at the centre of the front wall, visible from the spawn pose (it's Phase 3's `origin_marker_id`). The ids go counter-clockwise around the room from there; the box markers are 30–33.
+  - Lights: two directional lights + ambient, no shadows.
+- **Ground-truth marker poses** `worlds/textured_room_markers.yaml`: dictionary, size, and per marker the id, mount (wall or box name), the ArUco marker frame in the world (origin at the marker centre, x right, y up, z out of the marker) and the normal's yaw. Phase 3's tests compare the map frame against it.
+- **`worlds/calibration.sdf`**: the empty floor with the checkerboard model (`models/calib_checkerboard/`) standing upright 1 m in front of the spawn pose, for testing 1f in sim. It gets its own world so it doesn't block driving in the room. The board is 9 × 6 inner corners, 30 mm squares and a 30 mm white margin (bottom corner row 0.06 m above the floor). The geometry and pose are in `worlds/calibration_board.yaml`. If the real board differs, change the constants in the generator so sim matches it.
+- **Launch**: `world` arg (`empty` | `textured_room` | `calibration`, default `empty`) in `gazebo.launch.py` and passed through by `simulated_robot.launch.py`. `GZ_SIM_RESOURCE_PATH` also includes `brutusbot_description/models`.
+- **Check**: in `textured_room`, teleport the robot to face each marker head-on at 1, 2, 2.5 and 3 m, then detect with the aruco 3.1.12 library (UcoSLAM's detector settings) and compare with the ground truth.
+- **Result (2026-10-12)**:
+  - Ids and orientations are right everywhere (no mirrored or rotated textures). Position error is 0.5–0.7% at ≤ 1 m and 2–4% at 3 m; this range bias grows with the square of the distance, so it's the detector, not the world.
+  - Detected in every unoccluded head-on view from 1 to 2.5 m. The only misses are markers 5 and 6, which box_a partly hides.
+  - At 3 m, 17 of 19 views are detected. The two misses are the resolution limit: a 15 cm marker's cell is ~4.4 px there, and an isolated black cell blurs away. Rotation error from a single 15 cm marker reaches 10–25° at 3 m (planar pose ambiguity), so single-marker poses beyond ~2.5 m shouldn't be trusted.
+  - 20 cm markers gave the same detection results as 15 cm, so 15 cm stays.
+  - `calibration`: the board is found from the spawn pose, and PnP puts its corners within 0.6 mm of `calibration_board.yaml`.
 
 ### 1d. Real camera node (on the Pi 5)
 
@@ -228,7 +240,7 @@ The mount is hand-built, so the hand measurements from 1a are only a starting po
   - With `--write <path>`, it rewrites `camera_mount.yaml` with the result and the `source: calibrated ...` header. With `--symlink-install` the change applies on the next launch.
 - **Tool**: `brutusbot_slam/scripts/calibrate_camera_extrinsics.py` (rclpy, OpenCV, NumPy, SciPy; installed with `install(PROGRAMS ...)`). It's headless and prints progress on the console, so it can run on the Pi over SSH. It also publishes `/calibration/debug_image` with detected corners. Args: `--board <cols>x<rows> --square <m> [--board-mode upright|floor] [--board-height <m>] [--board-thickness <m>] [--write <path>]`. Needs `real_robot.launch.py` (or sim) running: controllers for the `odom` TF, and the camera.
 - **Procedure**:
-  1. **Sim first**: in `textured_room`, set the URDF mount to known values, start the tool with an initial guess offset by ~3 cm / 5° (a `--init` override), drive the poses. It must recover the URDF values within the targets. This validates the tool and the math before real data.
+  1. **Sim first**: in the `calibration` world, set the URDF mount to known values, start the tool with an initial guess offset by ~3 cm / 5° (a `--init` override), drive the poses. It must recover the URDF values within the targets. This validates the tool and the math before real data.
   2. **Real robot**: flat, rigid floor (no carpet), board vertical and well lit, fixed camera exposure (1d). Run once, write the YAML, then **run a second time** with the new values as the initial guess. The two runs must agree within the targets (repeatability check).
   3. Commit the YAML and record the result (values, std, odometry ratios) in the decision log.
 - **Recalibrate** whenever the camera is touched or the mount is bent.
@@ -236,13 +248,13 @@ The mount is hand-built, so the hand measurements from 1a are only a starting po
 ### 1g. Marker printing and layout guide (README)
 
 - Print markers from `ARUCO_MIP_36h12` at 15–20 cm, on matte paper (no glare), glued flat to a rigid backing. **Measure the black-border edge with calipers** and use that value; Phase 0's +1% bias may have come from 0.8 mm of size error.
-- Layout: at least one marker visible from the start pose, then one every ~2–3 m along driven routes and at goal areas, centres at roughly camera height (z from 1f). Avoid views steeper than ~60° from the marker normal. Never reuse an id in the same map.
+- Layout: at least one marker visible from the start pose, then enough along driven routes and at goal areas that one is always within ~2.5 m (sim shows single-marker poses degrade beyond that), centres at roughly camera height (z from 1f). Avoid views steeper than ~60° from the marker normal. Never reuse an id in the same map.
 - Keep a list of the ids used per room.
 
 ### Phase 1 done when
 
 1. `display.launch.py` and `simulated_robot.launch.py` show `camera_link` / `camera_optical_link` in the right place, and the default sim behaves as before plus the camera.
-2. Sim: `/image_raw` ≈ 30 Hz, `/camera_info` fx ≈ 707, all `textured_room` markers detectable at 1–3 m, `/ground_truth/pose` published.
+2. Sim: `/image_raw` ≈ 30 Hz, `/camera_info` fx ≈ 707, `textured_room` markers detectable head-on at 1–2.5 m, `/ground_truth/pose` published.
 3. Real: `/image_raw` ≈ 30 Hz measured on the Pi with fixed exposure; new intrinsics with < 0.3 px reprojection error, compared against Phase 0.
 4. 1f recovers known extrinsics in sim within the targets; on the real robot, two runs agree within the targets; `camera_mount.yaml` committed with `source: calibrated`.
 5. README has the camera, calibration and marker sections.
@@ -313,14 +325,14 @@ Files:
   - `enable_stamped_cmd_vel: true`, with `cmd_vel` remapped to `/brutusbot_controller/cmd_vel`.
 - `launch/navigation.launch.py`: `map_server` (nav mode) + Nav2 servers + lifecycle manager, with a `use_sim_time` arg.
 - `brutusbot_slam/launch/slam.launch.py`: args `mode:=mapping|localization`, `map:=<name>`, `use_sim_time`, `viewer`.
-- **Bringup**: add `slam:=none|mapping|localization`, `nav:=true|false` and `world:=` to `simulated_robot.launch.py` and `real_robot.launch.py`. Defaults keep today's behavior.
+- **Bringup**: add `slam:=none|mapping|localization` and `nav:=true|false` to `simulated_robot.launch.py` and `real_robot.launch.py` (`simulated_robot.launch.py` already has `world:=` since 1c). Defaults keep today's behavior.
 - **Check first**: `brutusbot_controllers.yaml` has `odom_frame_id: /odom`. A leading slash is invalid in TF2. Verify with `ros2 run tf2_ros tf2_echo odom base_footprint` and change it to `odom` if needed.
 
 ## Files to create / modify
 
 - `brutusbot_slam/`: `CMakeLists.txt`, `package.xml` (rclcpp, sensor_msgs, nav_msgs, geometry_msgs, std_srvs, tf2_ros, tf2_eigen, cv_bridge), `cmake/Find*.cmake`, `third_party/*.patch`, `src/`, `include/`, `config/{ucoslam.yaml,brutusbot_slam.yaml}`, `launch/slam.launch.py`, `maps/.gitkeep`, `scripts/calibrate_camera_extrinsics.py`
 - `brutusbot_navigation/` (new): `config/nav2_params.yaml`, `launch/navigation.launch.py`
-- `brutusbot_description/`: `urdf/{camera.xacro,brutusbot.xacro,brutusbot_gazebo.xacro,mobile_base.xacro}`, `config/camera_mount.yaml`, `launch/gazebo.launch.py`, `worlds/{empty,textured_room}.sdf`, `worlds/textured_room_markers.yaml`, `models/{aruco_<id>,calib_checkerboard,room_textures}/`, `scripts/make_marker_models.py`, `CMakeLists.txt`
+- `brutusbot_description/`: `urdf/{camera.xacro,brutusbot.xacro,brutusbot_gazebo.xacro,mobile_base.xacro}`, `config/camera_mount.yaml`, `launch/gazebo.launch.py`, `worlds/{empty,textured_room,calibration}.sdf`, `worlds/{textured_room_markers,calibration_board}.yaml`, `models/{aruco_<id>,calib_checkerboard,room_textures}/`, `scripts/generate_sim_worlds.py`, `CMakeLists.txt`
 - `brutusbot_bringup/`: `launch/{simulated_robot,real_robot}.launch.py`, `config/{v4l2_camera.yaml,camera_calibration.yaml}`, `package.xml`
 - `brutusbot_controller/config/brutusbot_controllers.yaml`: the `odom_frame_id` fix, only if confirmed
 - `CLAUDE.md` / README: new packages, backend build steps, marker printing and layout guide
